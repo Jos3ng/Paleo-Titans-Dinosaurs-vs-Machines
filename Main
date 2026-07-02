@@ -354,6 +354,7 @@
       align-content: start;
       gap: .25rem;
       overflow: hidden;
+      position: relative;
     }
 
     .slot.empty {
@@ -386,6 +387,24 @@
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
+    }
+
+    .slot-unequip {
+      position: absolute;
+      top: 3px;
+      right: 3px;
+      width: 20px;
+      height: 20px;
+      min-height: 20px;
+      padding: 0;
+      line-height: 1;
+      display: grid;
+      place-items: center;
+      font-size: .8rem;
+      border-radius: 5px;
+      background: rgba(224,82,82,.85);
+      border-color: #f08c8c;
+      color: #fff;
     }
 
     .tabs {
@@ -437,6 +456,11 @@
     .dino-card.locked {
       opacity: .66;
       filter: grayscale(.25);
+    }
+
+    .dino-card.in-team {
+      border-color: rgba(105, 198, 125, .55);
+      box-shadow: 0 0 0 1px rgba(105, 198, 125, .35) inset;
     }
 
     .badge-avatar {
@@ -763,6 +787,7 @@
       <section class="panel">
         <div class="panel-head">
           <h2>Escavação</h2>
+          <button class="icon-btn" id="soundBtn" title="Ativar/desativar som" aria-label="Ativar/desativar som">🔊</button>
           <button class="icon-btn" id="saveBtn" title="Salvar agora" aria-label="Salvar agora">💾</button>
         </div>
         <div class="panel-body excavation">
@@ -816,6 +841,7 @@
           <button class="tab active" data-tab="collection">Coleção</button>
           <button class="tab" data-tab="upgrades">Melhorias</button>
           <button class="tab" data-tab="strategy">Estratégia</button>
+          <button class="tab" data-tab="items">Itens</button>
           <button class="tab" data-tab="run">Run</button>
           <button class="tab" data-tab="relics">Relíquias</button>
           <button class="tab" data-tab="achievements">Missões</button>
@@ -833,6 +859,10 @@
           </div>
           <div class="view" id="strategy">
             <div class="list" id="strategyList"></div>
+          </div>
+          <div class="view" id="items">
+            <div class="small" style="margin-bottom:.6rem;">Bosses têm chance de dropar itens. Cada dinossauro só pode equipar 1 item por vez — equipar um novo substitui o anterior.</div>
+            <div class="list" id="itemsList"></div>
           </div>
           <div class="view" id="run">
             <div class="list" id="runList"></div>
@@ -860,6 +890,7 @@
     const SAVE_KEY = "paleo-titans-save-v1";
     const TICK_MS = 250;
     const FIGHT_SECONDS = 20;
+    const PRESTIGE_MIN_STAGE = 15;
 
     const elements = [
       { name: "Água", icon: "💧", color: "#4fb7e6", strong: ["Fogo"], weak: ["Raio"] },
@@ -964,13 +995,79 @@
       { id: "titanNursery", name: "Berçário Titânico", icon: "●", desc: "+8% HP por nível", base: 7, dna: 5, hp: 1.08 }
     ];
 
-    const specializationCatalog = [
-      { id: "predator", name: "Predador Supremo", attack: 1.24, hp: 1, desc: "Muito ataque." },
-      { id: "territorial", name: "Rei Territorial", attack: 1, hp: 1.28, desc: "Muito HP." },
-      { id: "frenzy", name: "Carnificina Frenética", attack: 1.12, hp: 1.08, aoe: 1.18, desc: "Dano em área melhorado." }
+    // Cada classe tem 3 especializações próprias, seguindo o padrão glass-cannon / tanque / poder-de-habilidade.
+    // Como cada luta tem apenas 1 robô na tela, "dano em área" foi implementado como poder de habilidade
+    // (abilityPower): multiplica cura, escudo, dano de habilidade e outros efeitos ativos do dinossauro.
+    const classSpecializations = {
+      "Tanque": [
+        { id: "tank_wall", name: "Muralha Titânica", attack: 0.9, hp: 1.35, abilityPower: 1, desc: "+35% HP, -10% ATQ." },
+        { id: "tank_balanced", name: "Guardião de Choque", attack: 1.15, hp: 1.15, abilityPower: 1, desc: "+15% HP, +15% ATQ." },
+        { id: "tank_aoe", name: "Onda de Impacto", attack: 1, hp: 1.05, abilityPower: 1.5, desc: "+50% poder de habilidade, +5% HP." }
+      ],
+      "Guerreiro": [
+        { id: "war_predator", name: "Predador Supremo", attack: 1.3, hp: 0.92, abilityPower: 1, desc: "+30% ATQ, -8% HP." },
+        { id: "war_territorial", name: "Rei Territorial", attack: 0.92, hp: 1.3, abilityPower: 1, desc: "+30% HP, -8% ATQ." },
+        { id: "war_frenzy", name: "Carnificina Frenética", attack: 1.05, hp: 1, abilityPower: 1.45, desc: "+45% poder de habilidade, +5% ATQ." }
+      ],
+      "Assassino": [
+        { id: "ass_blade", name: "Lâmina Fantasma", attack: 1.35, hp: 0.88, abilityPower: 1, desc: "+35% ATQ, -12% HP." },
+        { id: "ass_hide", name: "Casco Reforçado", attack: 0.9, hp: 1.3, abilityPower: 1, desc: "+30% HP, -10% ATQ." },
+        { id: "ass_reap", name: "Investida Ceifadora", attack: 1, hp: 1, abilityPower: 1.5, cooldown: 0.85, desc: "+50% poder de habilidade, -15% recarga." }
+      ],
+      "Mago": [
+        { id: "mag_arcane", name: "Arcano Devastador", attack: 1.32, hp: 0.92, abilityPower: 1, desc: "+32% ATQ, -8% HP." },
+        { id: "mag_tower", name: "Torre de Mana", attack: 0.94, hp: 1.28, abilityPower: 1, desc: "+28% HP, -6% ATQ." },
+        { id: "mag_burst", name: "Rajada Elemental", attack: 1, hp: 1, abilityPower: 1.55, desc: "+55% poder de habilidade." }
+      ],
+      "Suporte": [
+        { id: "sup_vanguard", name: "Vanguarda de Apoio", attack: 1.25, hp: 1.08, abilityPower: 1, desc: "+25% ATQ, +8% HP." },
+        { id: "sup_bastion", name: "Bastião Protetor", attack: 0.95, hp: 1.3, abilityPower: 1, desc: "+30% HP, -5% ATQ." },
+        { id: "sup_sync", name: "Sincronia Total", attack: 1, hp: 1, abilityPower: 1.5, cooldown: 0.8, desc: "+50% poder de habilidade, -20% recarga." }
+      ],
+      "Curandeiro": [
+        { id: "heal_hands", name: "Mãos Ligeiras", attack: 1.22, hp: 0.95, abilityPower: 1, desc: "+22% ATQ, -5% HP." },
+        { id: "heal_heart", name: "Coração Inabalável", attack: 0.95, hp: 1.3, abilityPower: 1, desc: "+30% HP, -5% ATQ." },
+        { id: "heal_font", name: "Fonte de Vida", attack: 1, hp: 1, abilityPower: 1.55, cooldown: 0.85, desc: "+55% poder de habilidade, -15% recarga." }
+      ]
+    };
+
+    // Sistema de itens: bosses têm chance de dropar um item para o inventário.
+    // Cada item tem um efeito principal e um secundário, escalados pela raridade.
+    // Um dinossauro só pode ter 1 item equipado por vez — equipar um novo desequipa o anterior automaticamente.
+    const itemTemplates = [
+      { type: "Arma", icon: "🗡️", name: "Lâmina Predatória", primary: { stat: "attack", base: .16 }, secondary: { stat: "critChance", base: .05 }, desc: "+ATQ e chance de crítico." },
+      { type: "Arma", icon: "🩸", name: "Presa Vampírica", primary: { stat: "attack", base: .1 }, secondary: { stat: "lifesteal", base: .07 }, desc: "+ATQ e roubo de vida." },
+      { type: "Armadura", icon: "🛡️", name: "Placa Blindada", primary: { stat: "hp", base: .2 }, secondary: { stat: "damageTakenReduction", base: .06 }, desc: "+HP e redução de dano recebido." },
+      { type: "Armadura", icon: "🦴", name: "Escama Fossilizada", primary: { stat: "hp", base: .26 }, secondary: { stat: "attack", base: .04 }, desc: "Muito +HP e um pouco de ATQ." },
+      { type: "Reator", icon: "🔋", name: "Núcleo Amplificador", primary: { stat: "abilityPower", base: .24 }, secondary: { stat: "cooldownReduction", base: .1 }, desc: "+Poder de habilidade e recarga menor." },
+      { type: "Sensor", icon: "📡", name: "Sensor Cinético", primary: { stat: "fossil", base: .12 }, secondary: { stat: "attack", base: .05 }, desc: "+Produção de fósseis e ATQ." },
+      { type: "Amuleto", icon: "💠", name: "Amuleto Elemental", primary: { stat: "elementAttack", base: .26 }, secondary: { stat: "hp", base: .05 }, desc: "+Dano elemental e um pouco de HP." }
     ];
 
-    const equipmentTypes = ["Armadura", "Reator", "Arma", "Sensor"];
+    function itemStatValue(stat, raw) {
+      if (["attack", "hp", "abilityPower", "fossil", "elementAttack"].includes(stat)) return 1 + raw;
+      if (stat === "cooldownReduction") return Math.max(.5, 1 - raw);
+      return Math.min(.4, raw);
+    }
+
+    function createItem(rarity) {
+      const template = itemTemplates[Math.floor(Math.random() * itemTemplates.length)];
+      const rarityData = rarities.find(r => r.name === rarity);
+      const effects = {};
+      effects[template.primary.stat] = itemStatValue(template.primary.stat, template.primary.base * rarityData.mult);
+      if (template.secondary) effects[template.secondary.stat] = itemStatValue(template.secondary.stat, template.secondary.base * rarityData.mult);
+      return {
+        id: "item" + Date.now() + Math.floor(Math.random() * 1000),
+        name: `${template.name} ${rarityLabel(rarity)}`,
+        type: template.type,
+        icon: template.icon,
+        rarity,
+        desc: template.desc,
+        effects,
+        owner: null
+      };
+    }
+
     const robotTypes = ["Drone", "Tanque", "Androide", "Mecha", "Torre de defesa", "Chefe robótico"];
     const bossNames = ["T-Rex Cibernético", "Dragão Mecânico", "Colosso Nuclear", "Aranha Quântica", "Basilisco de Plasma", "Titã Orbital", "Hidra Ferruginosa", "Monarca Void", "Kraken Magnético", "Fênix de Aço"];
 
@@ -1041,7 +1138,7 @@
           body,
           mark: dinoClass.mark,
           bulk: body === "sauropod" || body === "ankylo" ? 12 : body === "raptor" || body === "flyer" ? -6 : 2,
-          neck: body === "sauropod" ? 1 : 0,
+          neck: body === "sauropod" || (body === "marine" && index % 2 === 0) ? 1 : 0,
           horns: body === "ceratops" ? 1 : 0,
           plates: body === "stego" ? 1 : 0,
           armor: body === "ankylo" ? 1 : 0,
@@ -1084,6 +1181,84 @@
     const canvas = $("battleCanvas");
     const ctx = canvas.getContext("2d");
 
+    // --- Áudio sintetizado (sem arquivos externos, tudo gerado via Web Audio API) ---
+    const SOUND_KEY = "paleo-titans-sound-v1";
+    let audioCtx = null;
+    let soundOn = (() => {
+      try { return localStorage.getItem(SOUND_KEY) !== "off"; } catch { return true; }
+    })();
+
+    function ensureAudio() {
+      if (!soundOn) return null;
+      const AC = window.AudioContext || window.webkitAudioContext;
+      if (!AC) return null;
+      if (!audioCtx) audioCtx = new AC();
+      if (audioCtx.state === "suspended") audioCtx.resume();
+      return audioCtx;
+    }
+
+    function playTone(freqStart, freqEnd, duration, type, gainPeak) {
+      const ac = ensureAudio();
+      if (!ac) return;
+      const now = ac.currentTime;
+      const osc = ac.createOscillator();
+      const gain = ac.createGain();
+      osc.type = type;
+      osc.frequency.setValueAtTime(freqStart, now);
+      osc.frequency.exponentialRampToValueAtTime(Math.max(30, freqEnd), now + duration);
+      gain.gain.setValueAtTime(0.0001, now);
+      gain.gain.exponentialRampToValueAtTime(gainPeak, now + 0.008);
+      gain.gain.exponentialRampToValueAtTime(0.0001, now + duration);
+      osc.connect(gain);
+      gain.connect(ac.destination);
+      osc.start(now);
+      osc.stop(now + duration + 0.02);
+    }
+
+    function playNoiseBurst(duration, gainPeak, filterFreq) {
+      const ac = ensureAudio();
+      if (!ac) return;
+      const size = Math.max(1, Math.floor(ac.sampleRate * duration));
+      const buffer = ac.createBuffer(1, size, ac.sampleRate);
+      const data = buffer.getChannelData(0);
+      for (let i = 0; i < size; i++) data[i] = (Math.random() * 2 - 1) * (1 - i / size);
+      const noise = ac.createBufferSource();
+      noise.buffer = buffer;
+      const filter = ac.createBiquadFilter();
+      filter.type = "bandpass";
+      filter.frequency.value = filterFreq;
+      const gain = ac.createGain();
+      const now = ac.currentTime;
+      gain.gain.setValueAtTime(gainPeak, now);
+      gain.gain.exponentialRampToValueAtTime(0.0001, now + duration);
+      noise.connect(filter);
+      filter.connect(gain);
+      gain.connect(ac.destination);
+      noise.start(now);
+    }
+
+    function playDigSound() {
+      playNoiseBurst(0.08, 0.32, 1500);
+      playTone(230, 95, 0.11, "square", 0.16);
+    }
+
+    // Cada elemento tem um tom base diferente, então o "coro" de ataques da equipe varia por composição.
+    const elementPitch = { Água: 520, Terra: 300, Pedra: 260, Fogo: 640, Ar: 760, Raio: 900, Luz: 980, Trevas: 200, Nulo: 440 };
+
+    function playAttackSound(element) {
+      const base = (elementPitch[element] || 440) * (0.92 + Math.random() * 0.16);
+      playTone(base, base * 0.4, 0.09, "sawtooth", 0.12);
+      playNoiseBurst(0.045, 0.1, 2200);
+    }
+
+    function toggleSound() {
+      soundOn = !soundOn;
+      try { localStorage.setItem(SOUND_KEY, soundOn ? "on" : "off"); } catch {}
+      $("soundBtn").textContent = soundOn ? "🔊" : "🔇";
+      $("soundBtn").title = soundOn ? "Desativar som" : "Ativar som";
+      if (soundOn) ensureAudio();
+    }
+
     function load() {
       try {
         const raw = localStorage.getItem(SAVE_KEY);
@@ -1121,6 +1296,30 @@
 
     function rarityLabel(rarity) {
       return rarities.find(r => r.name === rarity)?.label || rarity;
+    }
+
+    // Traduz a habilidade ativa de um dinossauro (já resolvido via ownedDino) em texto com números reais,
+    // usando a mesma fórmula de abilityScaling() usada de fato no combate.
+    function describeAbilityEffect(d) {
+      const a = d.ability;
+      if (!a) return "";
+      const { power, evoBoost } = abilityScaling(d);
+      const baseCooldown = a.cooldown * (d.cooldownMultTotal || 1);
+      const cd = `Recarga base: ${baseCooldown.toFixed(1)}s (equipe/classe podem reduzir ainda mais)`;
+      switch (a.kind) {
+        case "heal": return `Cura instantânea de ${Math.round(13 * evoBoost)}% do HP total da equipe. ${cd}`;
+        case "regen": return `Regenera a equipe por ${(6 * power).toFixed(1)}s, a ~3.5%/s do próprio HP (${fmt(Math.round(d.hp * .035))}/s). ${cd}`;
+        case "shield": return `Concede escudo de ${Math.round(18 * evoBoost)}% do HP a cada aliado (sinergias de equipe aumentam ainda mais). ${cd}`;
+        case "damage": return `Causa ${fmt(Math.round(d.attack * 2.2 * evoBoost))} de dano direto extra ao robô. ${cd}`;
+        case "crit": return `Garante crítico (x1.85) nos ataques por ${(4 * power).toFixed(1)}s. ${cd}`;
+        case "buff": return `Aumenta o dano da equipe em +${Math.round(28 * power)}% na ativação, crescendo enquanto ativo (~${(5 * power).toFixed(1)}s). ${cd}`;
+        case "leech": return `Cura 16% do próprio dano causado por ${(5 * power).toFixed(1)}s. ${cd}`;
+        case "revive": return `Revive um aliado caído com 35% do HP máximo dele. ${cd}`;
+        case "freeze": return `Atrasa o próximo ataque do robô em ${(2.6 * evoBoost).toFixed(1)}s. ${cd}`;
+        case "defDown": return `Reduz a defesa do robô em ${Math.round(8 * evoBoost)} pontos percentuais nesta luta. ${cd}`;
+        case "haste": return `Reduz instantaneamente a recarga de toda a equipe em ${(2.2 * evoBoost).toFixed(1)}s. ${cd}`;
+        default: return a.desc;
+      }
     }
 
     function elementData(name) {
@@ -1232,31 +1431,60 @@
       const evoMult = [1, 1.75, 2.8][owned.evo || 0];
       const levelMult = 1 + ((owned.level || 1) - 1) * 0.11;
       const trait = traitData(owned.trait || "Feroz");
-      const spec = specializationCatalog.find(s => s.id === owned.specialization) || null;
+      const spec = (classSpecializations[base.className] || []).find(s => s.id === owned.specialization) || null;
       const equip = equipmentBonus(id);
       const globals = globalBonuses();
       const attack = Math.round(base.attack * evoMult * levelMult * trait.attack * trait.all * (spec?.attack || 1) * equip.attack * globals.attack);
       const hp = Math.round(base.hp * evoMult * levelMult * trait.hp * trait.all * (spec?.hp || 1) * equip.hp * globals.hp);
-      return { ...base, ...owned, trait: owned.trait || "Feroz", hp, attack, evoName: stageNames[owned.evo || 0], specialization: owned.specialization, spec };
+      return {
+        ...base, ...owned,
+        trait: owned.trait || "Feroz",
+        hp, attack,
+        evoName: stageNames[owned.evo || 0],
+        specialization: owned.specialization,
+        spec,
+        item: equip.item,
+        abilityPowerTotal: (spec?.abilityPower || 1) * equip.abilityPower,
+        cooldownMultTotal: (spec?.cooldown || 1) * equip.cooldownReduction,
+        critChance: equip.critChance,
+        lifesteal: equip.lifesteal,
+        damageTakenReduction: equip.damageTakenReduction,
+        elementAttack: equip.elementAttack,
+        itemFossilMult: equip.fossil
+      };
     }
 
     function equipmentBonus(id) {
-      return (state.equipment || []).filter(e => e.owner === id).reduce((bonus, item) => {
-        bonus.attack *= item.attack || 1;
-        bonus.hp *= item.hp || 1;
-        bonus.fossil *= item.fossil || 1;
-        return bonus;
-      }, { attack: 1, hp: 1, fossil: 1 });
+      const item = (state.equipment || []).find(it => it.owner === id) || null;
+      const e = item?.effects || {};
+      return {
+        item,
+        attack: e.attack || 1,
+        hp: e.hp || 1,
+        abilityPower: e.abilityPower || 1,
+        fossil: e.fossil || 1,
+        elementAttack: e.elementAttack || 1,
+        critChance: e.critChance || 0,
+        lifesteal: e.lifesteal || 0,
+        cooldownReduction: e.cooldownReduction || 1,
+        damageTakenReduction: e.damageTakenReduction || 0
+      };
+    }
+
+    function teamItemFossilMult() {
+      const team = state.team.map(ownedDino).filter(Boolean);
+      if (!team.length) return 1;
+      return team.reduce((mult, d) => mult * (d.itemFossilMult || 1), 1);
     }
 
     function clickPower() {
-      return (1 + upgrades.reduce((sum, u) => sum + (state.upgrades[u.id] || 0) * u.click, 0)) * globalBonuses().fossil;
+      return (1 + upgrades.reduce((sum, u) => sum + (state.upgrades[u.id] || 0) * u.click, 0)) * globalBonuses().fossil * teamItemFossilMult();
     }
 
     function passiveFps() {
       const upgradeFps = upgrades.reduce((sum, u) => sum + (state.upgrades[u.id] || 0) * u.fps, 0);
       const dinoFps = state.team.map(ownedDino).filter(Boolean).reduce((sum, d) => sum + d.attack * 0.045, 0);
-      return (upgradeFps + dinoFps) * globalBonuses().fossil;
+      return (upgradeFps + dinoFps) * globalBonuses().fossil * teamItemFossilMult();
     }
 
     function teamPower() {
@@ -1410,7 +1638,10 @@
       const cost = evolutionCost(dino);
       if (!spendFossils(cost)) return toast("Fósseis insuficientes para evolução.");
       state.owned[id].evo++;
-      if (state.owned[id].evo === 2 && !state.owned[id].specialization) state.owned[id].specialization = specializationCatalog[id.charCodeAt(id.length - 1) % specializationCatalog.length].id;
+      if (state.owned[id].evo === 2 && !state.owned[id].specialization) {
+        const options = classSpecializations[dino.className] || [];
+        if (options.length) state.owned[id].specialization = options[0].id;
+      }
       log(`${dino.name} evoluiu para ${stageNames[state.owned[id].evo]}.`);
       healTeam();
       checkAchievements();
@@ -1421,9 +1652,11 @@
 
     function chooseSpecialization(id, specId) {
       if (!state.owned[id] || state.owned[id].evo < 2) return;
-      state.owned[id].specialization = specId;
       const dino = dinos.find(d => d.id === id);
-      const spec = specializationCatalog.find(s => s.id === specId);
+      const options = classSpecializations[dino.className] || [];
+      const spec = options.find(s => s.id === specId);
+      if (!spec) return;
+      state.owned[id].specialization = specId;
       log(`${dino.name} escolheu ${spec.name}.`);
       healTeam();
       render();
@@ -1456,10 +1689,16 @@
     }
 
     function prestige() {
-      if (state.bestStage < 15) return toast("Prestígio libera ao alcançar fase 15.");
+      if (state.bestStage < PRESTIGE_MIN_STAGE) return toast(`Prestígio libera ao alcançar fase ${PRESTIGE_MIN_STAGE}.`);
       const gained = Math.max(1, Math.floor(Math.sqrt(state.bestStage - 10) + state.stats.bosses * .25));
       state.dna = (state.dna || 0) + gained;
       state.stats.prestiges++;
+
+      // Perde fósseis e melhorias de escavação; mantém coleção, relíquias, equipamentos e recorde.
+      state.fossils = 0;
+      state.upgrades = Object.fromEntries(upgrades.map(u => [u.id, 0]));
+
+      // Run reseta para fase 1, mas o recorde (bestStage) é preservado para o próximo prestígio.
       state.runStage = 1;
       state.inFight = false;
       state.robot = null;
@@ -1467,7 +1706,8 @@
       state.runArtifacts = [];
       state.runEvent = null;
       healTeam();
-      log(`Prestígio concluído: +${gained} DNA ancestral.`);
+      log(`Prestígio concluído: +${gained} DNA ancestral. Fósseis e melhorias de escavação foram zerados.`);
+      toast(`Prestígio: +${gained} DNA ancestral`);
       render();
       save();
     }
@@ -1475,8 +1715,7 @@
     function equipDino(id) {
       if (!state.owned[id]) return;
       if (state.team.includes(id)) {
-        state.team = state.team.filter(x => x !== id);
-        toast("Removido da equipe.");
+        unequipDino(id);
       } else {
         if (state.team.length >= 5) {
           toast("A equipe já tem 5 dinossauros.");
@@ -1484,7 +1723,44 @@
         }
         state.team.push(id);
         toast("Dinossauro equipado.");
+        healTeam();
+        checkAchievements();
+        render();
+        save();
       }
+    }
+
+    function equipItem(itemId, dinoId) {
+      const item = (state.equipment || []).find(it => it.id === itemId);
+      if (!item || !state.owned[dinoId]) return;
+      // Um dinossauro só pode ter 1 item: desequipa o que já estava nele.
+      const current = state.equipment.find(it => it.owner === dinoId);
+      if (current) current.owner = null;
+      // Um item só pode estar em 1 dinossauro por vez (já garantido, mas por segurança).
+      item.owner = dinoId;
+      const dino = dinos.find(d => d.id === dinoId);
+      toast(`${item.name} equipado em ${dino.name}.`);
+      log(`${dino.name} equipou ${item.icon} ${item.name}.`);
+      render();
+      save();
+    }
+
+    function unequipItem(itemId) {
+      const item = (state.equipment || []).find(it => it.id === itemId);
+      if (!item || !item.owner) return;
+      const dino = dinos.find(d => d.id === item.owner);
+      item.owner = null;
+      toast(`${item.name} devolvido ao inventário.`);
+      log(`${dino ? dino.name : "Dinossauro"} desequipou ${item.icon} ${item.name}.`);
+      render();
+      save();
+    }
+
+    function unequipDino(id) {
+      if (!state.team.includes(id)) return;
+      state.team = state.team.filter(x => x !== id);
+      const base = dinos.find(d => d.id === id);
+      toast(`${base ? base.name : "Dinossauro"} removido da equipe.`);
       healTeam();
       checkAchievements();
       render();
@@ -1598,12 +1874,21 @@
       log(`Evento: ${state.runEvent.name} (${state.runEvent.desc}).`);
     }
 
+    // Compartilhado entre o combate (useAbility) e a descrição numérica exibida na UI,
+    // pra garantir que o texto mostrado ao jogador nunca fique dessincronizado da fórmula real.
+    function abilityScaling(dino) {
+      const power = dino.abilityPowerTotal || 1;
+      const evoBoost = [1, 1.25, 1.65][dino.evo || 0] * power;
+      return { power, evoBoost };
+    }
+
     function useAbility(dino, alive, synergy) {
       const owned = state.owned[dino.id];
       const ability = dino.ability;
       if (!ability || owned.cooldown > 0) return { damage: 0, control: 0, heal: 0, buff: 1 };
-      owned.cooldown = ability.cooldown * (synergy.cooldown || 1) * (dino.className === "Suporte" ? .86 : 1);
-      const evoBoost = [1, 1.25, 1.65][dino.evo || 0];
+      const specCooldown = dino.cooldownMultTotal || 1;
+      const { power, evoBoost } = abilityScaling(dino);
+      owned.cooldown = ability.cooldown * (synergy.cooldown || 1) * specCooldown * (dino.className === "Suporte" ? .86 : 1);
       const result = { damage: 0, control: 0, heal: 0, buff: 1 };
       const maxHp = alive.reduce((sum, ally) => sum + ally.hp, 0);
 
@@ -1612,18 +1897,18 @@
         for (const ally of alive) state.owned[ally.id].currentHp = Math.min(ally.hp, (state.owned[ally.id].currentHp || ally.hp) + heal / alive.length);
         result.heal = heal;
       } else if (ability.kind === "regen") {
-        owned.regen = 6;
+        owned.regen = 6 * power;
       } else if (ability.kind === "shield") {
         for (const ally of alive) state.owned[ally.id].shield = (state.owned[ally.id].shield || 0) + ally.hp * .18 * evoBoost * synergy.shield;
       } else if (ability.kind === "damage") {
         result.damage = dino.attack * 2.2 * evoBoost;
       } else if (ability.kind === "crit") {
-        owned.crit = 4;
+        owned.crit = 4 * power;
       } else if (ability.kind === "buff") {
-        owned.teamBuff = 5;
-        result.buff = 1.28;
+        owned.teamBuff = 5 * power;
+        result.buff = 1 + 0.28 * power;
       } else if (ability.kind === "leech") {
-        owned.leech = 5;
+        owned.leech = 5 * power;
       } else if (ability.kind === "revive") {
         const fallenId = state.team.find(id => {
           const ally = ownedDino(id);
@@ -1631,11 +1916,11 @@
         });
         if (fallenId) {
           const ally = ownedDino(fallenId);
-          state.owned[fallenId].currentHp = ally.hp * .35;
+          state.owned[fallenId].currentHp = ally.hp * .35 * Math.min(1, power);
         }
       } else if (ability.kind === "freeze") {
         state.robot.cooldown += 2.6 * evoBoost;
-        result.control = .18;
+        result.control = .18 * power;
       } else if (ability.kind === "defDown") {
         state.robot.defense = Math.max(0, state.robot.defense - .08 * evoBoost);
       } else if (ability.kind === "haste") {
@@ -1665,15 +1950,22 @@
         owned.regen = Math.max(0, (owned.regen || 0) - dt);
         owned.teamBuff = Math.max(0, (owned.teamBuff || 0) - dt);
         owned.leech = Math.max(0, (owned.leech || 0) - dt);
+        // Timer só para o "pulso" sonoro de ataque — não afeta o cálculo de dano contínuo abaixo.
+        owned.atkTimer = (owned.atkTimer ?? (0.3 + Math.random() * 0.5)) - dt;
+        if (owned.atkTimer <= 0) {
+          playAttackSound(d.element);
+          owned.atkTimer = 0.55 + Math.random() * 0.55;
+        }
         const abilityResult = useAbility(d, alive, synergy);
         const roleBonus = d.role === "Dano" ? 1.16 : d.role === "Buffs" ? 1.06 : 1;
         const evoSkill = [1, 1.18, 1.42][d.evo || 0];
         const mult = elementMultiplier(d.element, state.robot.element);
-        const crit = owned.crit > 0 ? 1.85 : (Math.random() < synergy.crit * dt ? 1.7 : 1);
+        const crit = owned.crit > 0 ? 1.85 : (Math.random() < (synergy.crit + (d.critChance || 0)) * dt ? 1.7 : 1);
         const elementEvent = event.element === d.element ? event.elementAttack || 1 : 1;
         const artifactElement = state.runArtifacts.includes("solarStorm") && d.element === "Raio" ? 1.5 : 1;
+        const itemElement = d.elementAttack || 1;
         const defense = Math.max(0, state.robot.defense - synergy.pierce);
-        const damage = (d.attack * roleBonus * evoSkill * mult * synergy.attack * crit * elementEvent * artifactElement * dt + abilityResult.damage) * Math.max(.25, 1 - defense);
+        const damage = (d.attack * roleBonus * evoSkill * mult * synergy.attack * crit * elementEvent * artifactElement * itemElement * dt + abilityResult.damage) * Math.max(.25, 1 - defense);
         teamDamage += damage;
         buffs *= abilityResult.buff;
         if (d.role === "Cura" || d.element === "Luz" || d.element === "Água") healing += d.attack * 0.15 * dt;
@@ -1681,6 +1973,7 @@
         if (d.role === "Buffs") buffs += 0.015 * dt;
         if (owned.regen > 0) healing += d.hp * .035 * dt;
         if (owned.leech > 0) owned.currentHp = Math.min(d.hp, (owned.currentHp || d.hp) + damage * .16);
+        if (d.lifesteal > 0) owned.currentHp = Math.min(d.hp, (owned.currentHp || d.hp) + damage * d.lifesteal);
         if (owned.teamBuff > 0) buffs *= 1.1;
       }
 
@@ -1696,6 +1989,7 @@
         const target = alive[Math.floor(Math.random() * alive.length)];
         const eventAttack = event.enemyAttack || 1;
         let damage = state.robot.attack * eventAttack * elementMultiplier(state.robot.element, target.element) * (state.robot.boss ? 1.25 : 1) / synergy.hp;
+        damage *= Math.max(.5, 1 - (target.damageTakenReduction || 0));
         const shield = state.owned[target.id].shield || 0;
         const absorbed = Math.min(shield, damage);
         state.owned[target.id].shield = shield - absorbed;
@@ -1730,7 +2024,7 @@
       state.robot = null;
       state.fightTime = FIGHT_SECONDS;
       rewardTeamXp(robot.boss ? 2 : 1);
-      maybeDropEquipment(robot);
+      maybeDropItem(robot);
       maybeDropArtifact(robot);
       maybeRunEvent();
       checkEvolutions();
@@ -1751,27 +2045,16 @@
       log(`Artefato de run encontrado: ${artifact.name} (${artifact.desc}).`);
     }
 
-    function maybeDropEquipment(robot) {
-      const chance = robot.boss ? .75 : .16;
-      if (Math.random() > chance || !state.team.length) return;
+    function maybeDropItem(robot) {
+      if (!robot.boss) return; // Apenas chefes dropam itens.
+      const chance = .55;
+      if (Math.random() > chance) return;
       const rarity = weightedRandomRarity();
-      const rarityData = rarities.find(r => r.name === rarity);
-      const type = equipmentTypes[Math.floor(Math.random() * equipmentTypes.length)];
-      const owner = state.team[Math.floor(Math.random() * state.team.length)];
-      const item = {
-        id: "eq" + Date.now() + Math.floor(Math.random() * 1000),
-        owner,
-        type,
-        rarity,
-        name: `${type} ${robot.element} ${rarityLabel(rarity)}`,
-        attack: type === "Arma" || type === "Reator" ? 1 + rarityData.mult * .045 : 1,
-        hp: type === "Armadura" || type === "Sensor" ? 1 + rarityData.mult * .05 : 1,
-        fossil: type === "Sensor" ? 1.04 : 1
-      };
+      const item = createItem(rarity);
       state.equipment.push(item);
-      state.equipment = state.equipment.slice(-80);
-      const dino = dinos.find(d => d.id === owner);
-      log(`Peça obtida: ${item.name} equipada em ${dino?.name || "aliado"}.`);
+      state.equipment = state.equipment.slice(-60);
+      log(`Item encontrado: ${item.icon} ${item.name} (${item.desc}). Equipe na aba Itens.`);
+      toast(`Item encontrado: ${item.name}`);
     }
 
     function rewardTeamXp(amount) {
@@ -1855,6 +2138,7 @@
       renderCollection();
       renderUpgrades();
       renderStrategy();
+      renderItems();
       renderRun();
       renderRelics();
       renderAchievements();
@@ -1880,14 +2164,19 @@
           slot.textContent = "Vazio";
         } else {
           const d = ownedDino(id);
+          const baseDino = dinos.find(x => x.id === id);
           const hpPct = Math.max(0, Math.min(100, ((state.owned[id].currentHp || d.hp) / d.hp) * 100));
           slot.style.setProperty("--element-color", elementData(d.element).color);
           slot.style.setProperty("--bulk", d.art.bulk);
           slot.style.setProperty("--mark", `"${d.art.mark}"`);
+          slot.style.borderLeft = `3px solid ${rarityColor(d.rarity)}`;
+          slot.title = `${d.name} — ${rarityLabel(d.rarity)}\nBase (Nível 1): ATQ ${baseDino.attack} • HP ${baseDino.hp}\nAtual (Nível ${d.level}): ATQ ${d.attack} • HP ${d.hp}`;
           slot.innerHTML = `
+            <button class="slot-unequip" title="Remover ${d.name} da equipe" aria-label="Remover ${d.name} da equipe" data-unequip="${id}">✕</button>
             <div class="mini-dino" style="--element-color:${elementData(d.element).color};--bulk:${d.art.bulk};--mark:'${d.art.mark}'"></div>
             <b>${d.name}</b>
             <span>${elementData(d.element).icon} ${d.className} Nv.${d.level}</span>
+            <span class="rarity-${d.rarity}" style="font-size:.62rem;">${rarityLabel(d.rarity)} • Base Nv.1: ATQ ${baseDino.attack} HP ${baseDino.hp}</span>
             <div class="bar"><div class="fill" style="width:${hpPct}%"></div></div>
           `;
         }
@@ -1933,14 +2222,16 @@
         const levelBtn = owned ? `<button onclick="levelUpDino('${d.id}')" ${state.fossils < levelCost(owned) ? "disabled" : ""}>Upar ${fmt(levelCost(owned))}</button>` : "";
         const evoBtn = owned && owned.evo < 2 ? `<button class="${canEvolve ? "primary" : ""}" onclick="evolveDino('${d.id}')" ${!canEvolve || state.fossils < evolutionCost(owned) ? "disabled" : ""}>Evoluir ${fmt(evolutionCost(owned))}</button>` : "";
         const equipBtn = owned ? `<button class="${inTeam ? "warn" : "primary"}" title="${inTeam ? "Remover da equipe" : "Equipar"}" onclick="equipDino('${d.id}')">${inTeam ? "Remover" : "Equipar"}</button>` : `<button disabled>Bloqueado</button>`;
-        const specButtons = owned && owned.evo >= 2 ? specializationCatalog.map(s => `<button class="${owned.specialization === s.id ? "primary" : ""}" onclick="chooseSpecialization('${d.id}', '${s.id}')" title="${s.desc}">${s.name.split(" ")[0]}</button>`).join("") : "";
-        const equipment = owned ? state.equipment.filter(item => item.owner === d.id).slice(-2).map(item => item.name).join(" • ") : "";
+        const specOptions = owned ? (classSpecializations[d.className] || []) : [];
+        const specButtons = owned && owned.evo >= 2 ? specOptions.map(s => `<button class="${owned.specialization === s.id ? "primary" : ""}" onclick="chooseSpecialization('${d.id}', '${s.id}')" title="${s.desc}">${s.name.split(" ")[0]}</button>`).join("") : "";
+        const equippedItem = owned ? (state.equipment || []).find(item => item.owner === d.id) : null;
         return `
-          <div class="dino-card ${owned ? "" : "locked"}" style="--element-color:${e.color}">
+          <div class="dino-card ${owned ? "" : "locked"} ${inTeam ? "in-team" : ""}" style="--element-color:${e.color}">
             <div class="${owned ? "mini-dino" : "badge-avatar"}" style="--element-color:${e.color};--bulk:${d.art.bulk};--mark:'${d.art.mark}'">${owned ? "" : "?"}</div>
             <div class="card-main">
               <b>${title}</b>
               <div class="small">${owned ? d.skill + " • " + d.lore : "Incube ovos para catalogar esta espécie."}</div>
+              ${owned ? `<div class="small" style="color:var(--gold);margin-top:.2rem;">⚡ ${describeAbilityEffect(owned)}</div>` : ""}
               <div class="meta">
                 <span class="chip">${e.icon} ${d.element}</span>
                 <span class="chip">${d.className}</span>
@@ -1948,9 +2239,10 @@
                 <span class="chip">${owned ? owned.evoName : "???"}</span>
                 <span class="chip">${owned ? "Trait " + owned.trait : "Trait ???"}</span>
                 <span class="chip">${stats}</span>
+                ${inTeam ? `<span class="chip">Na equipe</span>` : ""}
               </div>
               ${owned ? `<div class="progress-line" style="--pct:${Math.min(100, (owned.xp / (3 + owned.level)) * 100)}%"><i></i></div>` : ""}
-              ${owned ? `<div class="ability-row">${specButtons}<span class="chip">${owned.spec?.name || "Sem especialização"}</span>${equipment ? `<span class="chip">${equipment}</span>` : ""}</div>` : ""}
+              ${owned ? `<div class="ability-row">${specButtons}<span class="chip">${owned.spec?.name || "Sem especialização"}</span>${equippedItem ? `<span class="chip">${equippedItem.icon} ${equippedItem.name}</span><button class="icon-btn" title="Desequipar item" onclick="unequipItem('${equippedItem.id}')">✕</button>` : `<span class="chip">Sem item</span>`}</div>` : ""}
             </div>
             <div class="card-actions wide">${equipBtn}${levelBtn}${evoBtn}</div>
           </div>`;
@@ -1989,7 +2281,7 @@
           </div>`;
       }).join("");
       const synergy = synergyBonuses();
-      const teamRoles = state.team.map(ownedDino).filter(Boolean).map(d => `${d.name}: ${d.className} • ${d.role} • ${d.skill}`).join("<br>");
+      const teamRoles = state.team.map(ownedDino).filter(Boolean).map(d => `${d.name}: ${d.className} • ${d.role} • ${d.skill}<br><span style="color:var(--gold);">⚡ ${describeAbilityEffect(d)}</span>`).join("<br><br>");
       const bonusRows = collectionBonuses().map(b => `
         <div class="achievement-card">
           <div class="badge-avatar">▣</div>
@@ -2045,6 +2337,69 @@
       `;
     }
 
+    const itemStatLabels = {
+      attack: "ATQ", hp: "HP", abilityPower: "Poder de habilidade", fossil: "Fósseis",
+      elementAttack: "Dano elemental", critChance: "Chance de crítico", lifesteal: "Roubo de vida",
+      damageTakenReduction: "Redução de dano", cooldownReduction: "Recarga"
+    };
+
+    const rarityColors = { Comum: "#9aa5ad", Raro: "#76c8ff", Epico: "#c798ff", Lendario: "#ffd36a", Mitico: "#ff8d87" };
+    function rarityColor(rarity) { return rarityColors[rarity] || rarityColors.Comum; }
+
+    function formatItemEffects(effects) {
+      return Object.entries(effects).map(([stat, val]) => {
+        if (["attack", "hp", "abilityPower", "fossil", "elementAttack"].includes(stat)) {
+          return `+${Math.round((val - 1) * 100)}% ${itemStatLabels[stat]}`;
+        }
+        if (stat === "cooldownReduction") return `-${Math.round((1 - val) * 100)}% ${itemStatLabels[stat]}`;
+        return `+${Math.round(val * 100)}% ${itemStatLabels[stat]}`;
+      }).join(" • ");
+    }
+
+    function renderItems() {
+      if (selectedTab !== "items") return;
+      const inventory = (state.equipment || []).filter(it => !it.owner);
+      const equipped = (state.equipment || []).filter(it => it.owner);
+
+      const inventoryRows = inventory.length ? inventory.map(item => {
+        const equipButtons = state.team.length
+          ? state.team.map(id => {
+              const d = dinos.find(x => x.id === id);
+              const already = (state.equipment || []).some(it => it.owner === id);
+              return `<button onclick="equipItem('${item.id}', '${id}')" title="${already ? "Substitui o item atual de " + d.name : "Equipar em " + d.name}">${d.name.split(" ")[0]}</button>`;
+            }).join("")
+          : `<button disabled>Equipe vazia</button>`;
+        return `
+          <div class="upgrade-card">
+            <div class="badge-avatar" style="border-color:${rarityColor(item.rarity)};box-shadow:0 0 0 1px ${rarityColor(item.rarity)} inset">${item.icon}</div>
+            <div class="card-main">
+              <b>${item.name}</b>
+              <div class="small">${item.type} • ${formatItemEffects(item.effects)}</div>
+              <div class="ability-row">${equipButtons}</div>
+            </div>
+          </div>`;
+      }).join("") : `<div class="small">Nenhum item no inventário ainda. Derrote chefes robóticos para ter chance de encontrar itens.</div>`;
+
+      const equippedRows = equipped.map(item => {
+        const dino = dinos.find(d => d.id === item.owner);
+        return `
+          <div class="upgrade-card">
+            <div class="badge-avatar" style="border-color:${rarityColor(item.rarity)};box-shadow:0 0 0 1px ${rarityColor(item.rarity)} inset">${item.icon}</div>
+            <div class="card-main">
+              <b>${item.name}</b>
+              <div class="small">Equipado em ${dino ? dino.name : "?"} • ${formatItemEffects(item.effects)}</div>
+            </div>
+            <button class="warn" onclick="unequipItem('${item.id}')">Desequipar</button>
+          </div>`;
+      }).join("");
+
+      $("itemsList").innerHTML = `
+        <div class="section-title" style="margin-bottom:.4rem;">Inventário (${inventory.length})</div>
+        ${inventoryRows}
+        ${equipped.length ? `<div class="section-title" style="margin:.9rem 0 .4rem;">Equipados (${equipped.length})</div>${equippedRows}` : ""}
+      `;
+    }
+
     function renderRelics() {
       if (selectedTab !== "relics") return;
       $("relicList").innerHTML = relics.map(r => {
@@ -2089,8 +2444,8 @@
           </div>`;
       }).join("");
       $("achievementList").innerHTML = missionRows + achievementRows;
-      $("prestigeBtn").disabled = state.bestStage < 15;
-      $("prestigeBtn").textContent = state.bestStage < 15 ? "Prestígio fase 15" : `Prestígio (+${fmt(Math.max(1, Math.floor(Math.sqrt(state.bestStage - 10) + state.stats.bosses * .25)))} DNA)`;
+      $("prestigeBtn").disabled = state.bestStage < PRESTIGE_MIN_STAGE;
+      $("prestigeBtn").textContent = state.bestStage < PRESTIGE_MIN_STAGE ? `Prestígio fase ${PRESTIGE_MIN_STAGE}` : `Prestígio (+${fmt(Math.max(1, Math.floor(Math.sqrt(state.bestStage - 10) + state.stats.bosses * .25)))} DNA)`;
     }
 
     function drawBattle() {
@@ -2137,151 +2492,470 @@
       ctx.save();
       ctx.translate(x, y);
       ctx.scale(scale, scale);
-      ctx.fillStyle = e.color;
-      ctx.strokeStyle = "rgba(255,255,255,.38)";
-      ctx.lineWidth = 3;
+      ctx.lineCap = "round";
+      ctx.lineJoin = "round";
 
-      if (art.wings) {
-        ctx.fillStyle = mixColor(e.color, "#ffffff", .2);
-        ctx.beginPath();
-        ctx.moveTo(-8, -14);
-        ctx.quadraticCurveTo(-58, -72, -92, -15);
-        ctx.quadraticCurveTo(-52, -28, -12, 4);
-        ctx.moveTo(15, -15);
-        ctx.quadraticCurveTo(72, -66, 92, -8);
-        ctx.quadraticCurveTo(54, -22, 20, 6);
-        ctx.fill();
-        ctx.stroke();
-      }
+      const body = art.body || "raptor";
+      if (body === "flyer") drawFlyerBody(e, art, bulk);
+      else if (body === "marine") drawMarineBody(e, art, bulk, index);
+      else if (body === "raptor" || body === "spino") drawBipedBody(e, art, bulk, body === "spino");
+      else drawQuadrupedBody(e, art, bulk);
 
-      if (art.fin) {
-        ctx.fillStyle = mixColor(e.color, "#111318", .18);
-        ctx.beginPath();
-        ctx.ellipse(4, 0, 58 + bulk, 19, -0.03, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.stroke();
-        ctx.beginPath();
-        ctx.moveTo(-42, -2);
-        ctx.quadraticCurveTo(-90, -28, -104, -6);
-        ctx.quadraticCurveTo(-82, 13, -42, 12);
-        ctx.fill();
-        ctx.stroke();
-      } else {
-        ctx.beginPath();
-        ctx.ellipse(0, 0, 46 + bulk, 25 + bulk * .22, -0.08, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.stroke();
-      }
-
-      if (art.sail) {
-        ctx.fillStyle = mixColor(e.color, "#f7ef9d", .25);
-        ctx.beginPath();
-        ctx.moveTo(-30, -18);
-        ctx.quadraticCurveTo(-8, -70, 24, -18);
-        ctx.closePath();
-        ctx.fill();
-        ctx.stroke();
-      }
-
-      if (art.plates) {
-        ctx.fillStyle = mixColor(e.color, "#eadab0", .3);
-        for (let i = 0; i < 5; i++) {
-          ctx.beginPath();
-          ctx.moveTo(-36 + i * 18, -18);
-          ctx.lineTo(-27 + i * 18, -42 - (i % 2) * 7);
-          ctx.lineTo(-17 + i * 18, -17);
-          ctx.closePath();
-          ctx.fill();
-          ctx.stroke();
-        }
-      }
-
-      if (art.armor) {
-        ctx.fillStyle = "rgba(255,255,255,.22)";
-        for (let i = 0; i < 5; i++) {
-          ctx.beginPath();
-          ctx.arc(-28 + i * 15, -5 + (i % 2) * 9, 5, 0, Math.PI * 2);
-          ctx.fill();
-        }
-      }
-
-      if (art.neck) {
-        ctx.strokeStyle = e.color;
-        ctx.lineWidth = 18;
-        ctx.beginPath();
-        ctx.moveTo(32, -12);
-        ctx.quadraticCurveTo(66, -72, 86, -42);
-        ctx.stroke();
-        ctx.strokeStyle = "rgba(255,255,255,.38)";
-        ctx.lineWidth = 3;
-        ctx.beginPath();
-        ctx.ellipse(95, -44, 21, 15, .2, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.stroke();
-      } else {
-        ctx.beginPath();
-        ctx.ellipse(45, -22, art.horns ? 28 : 24, 18, .2, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.stroke();
-      }
-
-      if (art.horns) {
-        ctx.fillStyle = "#eadab0";
-        [[56, -37], [38, -36], [66, -19]].forEach(([hx, hy], i) => {
-          ctx.beginPath();
-          ctx.moveTo(hx, hy);
-          ctx.lineTo(hx + (i === 1 ? -18 : 18), hy - 14);
-          ctx.lineTo(hx + (i === 1 ? -4 : 4), hy + 5);
-          ctx.closePath();
-          ctx.fill();
-          ctx.stroke();
-        });
-      }
-
-      ctx.fillStyle = e.color;
-      ctx.beginPath();
-      ctx.moveTo(-38, -4);
-      ctx.quadraticCurveTo(-80 - bulk, -36, -96 - bulk, -12);
-      ctx.quadraticCurveTo(-74, -5, -43, 10);
-      ctx.fill();
-      ctx.stroke();
-
-      if (art.tailClub) {
-        ctx.fillStyle = mixColor(e.color, "#111318", .22);
-        ctx.beginPath();
-        ctx.ellipse(-104 - bulk, -13, 14, 11, 0, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.stroke();
-      }
-
-      ctx.strokeStyle = "rgba(0,0,0,.24)";
-      ctx.lineWidth = 2;
-      for (let i = 0; i <= art.stripes; i++) {
-        ctx.beginPath();
-        ctx.moveTo(-18 + i * 18, -19);
-        ctx.lineTo(-28 + i * 18, 14);
-        ctx.stroke();
-      }
-
-      ctx.fillStyle = "#111318";
-      ctx.beginPath();
-      ctx.arc(art.neck ? 101 : 53, art.neck ? -48 : -26, 3.8, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.strokeStyle = "rgba(0,0,0,.38)";
-      ctx.lineWidth = 5;
-      ctx.beginPath();
-      ctx.moveTo(-18 - bulk * .15, 18);
-      ctx.lineTo(-26 - bulk * .1, 48);
-      ctx.moveTo(22 + bulk * .12, 17);
-      ctx.lineTo(14 + bulk * .1, 48);
-      ctx.stroke();
       if (d.role === "Cura") {
         ctx.strokeStyle = "rgba(247,239,157,.55)";
+        ctx.lineWidth = 2;
         ctx.beginPath();
         ctx.arc(0, -6, 56 + Math.sin(animationTime * 5 + index) * 4, 0, Math.PI * 2);
         ctx.stroke();
       }
       ctx.restore();
+    }
+
+    // Bípedes eretos (raptor / spino): tronco inclinado para frente sobre 2 pernas fortes,
+    // cauda longa para equilíbrio, braços pequenos junto ao peito, cabeça à frente num pescoço curto.
+    function drawBipedBody(e, art, bulk, heavy) {
+      const torsoRx = (heavy ? 42 : 34) + bulk * .6;
+      const torsoRy = (heavy ? 24 : 19) + bulk * .3;
+
+      // Cauda (atrás, para baixo, contrabalanceando o corpo)
+      ctx.fillStyle = e.color;
+      ctx.strokeStyle = "rgba(255,255,255,.35)";
+      ctx.lineWidth = 2.5;
+      ctx.beginPath();
+      ctx.moveTo(-18, 4);
+      ctx.quadraticCurveTo(-70 - bulk, 6, -96 - bulk, 40);
+      ctx.quadraticCurveTo(-60 - bulk, 26, -16, 16);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+
+      // Pernas traseiras (afastadas, atrás do corpo — sugerem profundidade)
+      ctx.strokeStyle = mixColor(e.color, "#0b0d10", .38);
+      ctx.lineWidth = heavy ? 12 : 9;
+      ctx.beginPath();
+      ctx.moveTo(-10, 6);
+      ctx.lineTo(-16, 30);
+      ctx.lineTo(-12, 54);
+      ctx.stroke();
+
+      // Braços curtos junto ao peito
+      ctx.strokeStyle = mixColor(e.color, "#000000", .18);
+      ctx.lineWidth = 4;
+      ctx.beginPath();
+      ctx.moveTo(22, -6);
+      ctx.lineTo(34, 8);
+      ctx.stroke();
+
+      // Tronco ereto, inclinado
+      ctx.fillStyle = e.color;
+      ctx.strokeStyle = "rgba(255,255,255,.4)";
+      ctx.lineWidth = 3;
+      ctx.save();
+      ctx.translate(4, -8);
+      ctx.rotate(-0.42);
+      ctx.beginPath();
+      ctx.ellipse(0, 0, torsoRx, torsoRy, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+      ctx.restore();
+
+      // Vela dorsal (spino)
+      if (art.sail || heavy) {
+        ctx.fillStyle = mixColor(e.color, "#f7ef9d", .22);
+        ctx.beginPath();
+        ctx.moveTo(-14, -26);
+        ctx.quadraticCurveTo(10, -78, 34, -22);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+      }
+
+      // Perna dianteira (na frente, sobre o corpo — dá o passo digitígrado)
+      ctx.strokeStyle = e.color;
+      ctx.lineWidth = heavy ? 13 : 10;
+      ctx.beginPath();
+      ctx.moveTo(14, 8);
+      ctx.lineTo(20, 32);
+      ctx.lineTo(24, 56);
+      ctx.stroke();
+      ctx.fillStyle = mixColor(e.color, "#000000", .3);
+      [[-12, 55], [24, 57]].forEach(([fx, fy]) => {
+        ctx.beginPath();
+        ctx.ellipse(fx, fy, 8, 4.5, 0, 0, Math.PI * 2);
+        ctx.fill();
+      });
+
+      // Pescoço curto + cabeça / focinho para frente
+      ctx.strokeStyle = e.color;
+      ctx.lineWidth = heavy ? 15 : 11;
+      ctx.beginPath();
+      ctx.moveTo(34, -30);
+      ctx.quadraticCurveTo(52, -46, 68, -40);
+      ctx.stroke();
+
+      ctx.fillStyle = e.color;
+      ctx.strokeStyle = "rgba(255,255,255,.4)";
+      ctx.lineWidth = 2.5;
+      ctx.beginPath();
+      if (heavy) {
+        // Focinho alongado, tipo crocodilo
+        ctx.ellipse(88, -40, 26, 10, -0.1, 0, Math.PI * 2);
+      } else {
+        ctx.ellipse(78, -42, 19, 13, -0.15, 0, Math.PI * 2);
+      }
+      ctx.fill();
+      ctx.stroke();
+
+      ctx.fillStyle = "#111318";
+      ctx.beginPath();
+      ctx.arc(heavy ? 96 : 84, heavy ? -44 : -46, 3.6, 0, Math.PI * 2);
+      ctx.fill();
+
+      drawStripes(e, art, -4, 14);
+    }
+
+    // Quadrúpedes (ceratops / sauropod / stego / ankylo): corpo horizontal baixo, 4 patas,
+    // pescoço e cabeça variam por subtipo através das flags de art (neck, horns, plates, armor, tailClub).
+    function drawQuadrupedBody(e, art, bulk) {
+      const bodyRx = 48 + bulk;
+      const bodyRy = 23 + bulk * .22;
+
+      // Patas distantes (desenhadas primeiro, mais escuras, sugerindo profundidade)
+      ctx.strokeStyle = mixColor(e.color, "#0b0d10", .4);
+      ctx.lineWidth = 9;
+      [[-26, 44], [24, 44]].forEach(([lx, ly]) => {
+        ctx.beginPath();
+        ctx.moveTo(lx - 4, 14);
+        ctx.lineTo(lx - 6, ly);
+        ctx.stroke();
+      });
+
+      // Corpo
+      ctx.fillStyle = e.color;
+      ctx.strokeStyle = "rgba(255,255,255,.38)";
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.ellipse(0, 2, bodyRx, bodyRy, -0.04, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+
+      // Placas dorsais (stego)
+      if (art.plates) {
+        ctx.fillStyle = mixColor(e.color, "#eadab0", .3);
+        for (let i = 0; i < 5; i++) {
+          ctx.beginPath();
+          ctx.moveTo(-34 + i * 18, -14);
+          ctx.lineTo(-25 + i * 18, -40 - (i % 2) * 8);
+          ctx.lineTo(-15 + i * 18, -13);
+          ctx.closePath();
+          ctx.fill();
+          ctx.stroke();
+        }
+      }
+
+      // Placas de blindagem (ankylo)
+      if (art.armor) {
+        ctx.fillStyle = mixColor(e.color, "#0b0d10", .2);
+        ctx.beginPath();
+        ctx.ellipse(0, -6, bodyRx - 6, bodyRy - 8, -0.04, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = "rgba(255,255,255,.24)";
+        for (let i = 0; i < 6; i++) {
+          ctx.beginPath();
+          ctx.arc(-32 + i * 13, -10 + (i % 2) * 10, 5, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
+
+      // Patas próximas (por cima do corpo)
+      ctx.strokeStyle = e.color;
+      ctx.lineWidth = 10;
+      [[-28, 48], [26, 48]].forEach(([lx, ly]) => {
+        ctx.beginPath();
+        ctx.moveTo(lx, 18);
+        ctx.lineTo(lx + 2, ly);
+        ctx.stroke();
+      });
+      ctx.fillStyle = mixColor(e.color, "#000000", .3);
+      [[-28, 50], [28, 50]].forEach(([fx, fy]) => {
+        ctx.beginPath();
+        ctx.ellipse(fx, fy, 8, 4.5, 0, 0, Math.PI * 2);
+        ctx.fill();
+      });
+
+      // Pescoço + cabeça
+      ctx.fillStyle = e.color;
+      ctx.strokeStyle = "rgba(255,255,255,.38)";
+      if (art.neck) {
+        // Pescoço longo (sauropod)
+        ctx.strokeStyle = e.color;
+        ctx.lineWidth = 17;
+        ctx.beginPath();
+        ctx.moveTo(34, -8);
+        ctx.quadraticCurveTo(68, -70, 90, -46);
+        ctx.stroke();
+        ctx.fillStyle = e.color;
+        ctx.strokeStyle = "rgba(255,255,255,.38)";
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.ellipse(98, -48, 16, 11, .2, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+        ctx.fillStyle = "#111318";
+        ctx.beginPath();
+        ctx.arc(104, -50, 3, 0, Math.PI * 2);
+        ctx.fill();
+      } else {
+        // Pescoço curto (ceratops / stego / ankylo)
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.ellipse(42, -16, art.horns ? 26 : 22, 17, .18, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+
+        if (art.horns) {
+          ctx.fillStyle = mixColor(e.color, "#0b0d10", .18);
+          ctx.beginPath();
+          ctx.ellipse(48, -14, 34, 22, .05, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.stroke();
+          ctx.fillStyle = "#eadab0";
+          [[54, -32], [40, -32], [62, -14]].forEach(([hx, hy], i) => {
+            ctx.beginPath();
+            ctx.moveTo(hx, hy);
+            ctx.lineTo(hx + (i === 1 ? -16 : 16), hy - 15);
+            ctx.lineTo(hx + (i === 1 ? -4 : 4), hy + 4);
+            ctx.closePath();
+            ctx.fill();
+            ctx.stroke();
+          });
+        }
+        ctx.fillStyle = "#111318";
+        ctx.beginPath();
+        ctx.arc(50, -20, 3.4, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      // Cauda
+      ctx.fillStyle = e.color;
+      ctx.strokeStyle = "rgba(255,255,255,.38)";
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.moveTo(-40, -2);
+      ctx.quadraticCurveTo(-82 - bulk, -14, -98 - bulk, 6);
+      ctx.quadraticCurveTo(-78, 12, -42, 14);
+      ctx.fill();
+      ctx.stroke();
+
+      if (art.tailClub) {
+        ctx.fillStyle = mixColor(e.color, "#0b0d10", .22);
+        ctx.beginPath();
+        ctx.ellipse(-104 - bulk, 4, 15, 12, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+      }
+
+      drawStripes(e, art, -2, -12);
+    }
+
+    // Voadores (flyer): corpo compacto, asas membranosas largas, bico alongado, patas finas recolhidas.
+    function drawFlyerBody(e, art, bulk) {
+      const wingColor = mixColor(e.color, "#ffffff", .16);
+
+      // Asas (membrana com "dedo" estrutural)
+      ctx.fillStyle = wingColor;
+      ctx.strokeStyle = "rgba(255,255,255,.4)";
+      ctx.lineWidth = 2.5;
+      ctx.beginPath();
+      ctx.moveTo(-6, -6);
+      ctx.quadraticCurveTo(-60, -58, -108, -6);
+      ctx.quadraticCurveTo(-64, -14, -10, 10);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(-8, -6);
+      ctx.lineTo(-96, -8);
+      ctx.stroke();
+
+      ctx.beginPath();
+      ctx.moveTo(8, -6);
+      ctx.quadraticCurveTo(62, -58, 110, -6);
+      ctx.quadraticCurveTo(66, -14, 12, 10);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(10, -6);
+      ctx.lineTo(98, -8);
+      ctx.stroke();
+
+      // Corpo pequeno e compacto
+      ctx.fillStyle = e.color;
+      ctx.strokeStyle = "rgba(255,255,255,.4)";
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.ellipse(0, 2, 20 + bulk * .4, 15, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+
+      // Patas finas recolhidas
+      ctx.strokeStyle = mixColor(e.color, "#000000", .3);
+      ctx.lineWidth = 3.5;
+      ctx.beginPath();
+      ctx.moveTo(-6, 14);
+      ctx.lineTo(-10, 30);
+      ctx.moveTo(6, 14);
+      ctx.lineTo(10, 30);
+      ctx.stroke();
+
+      // Pescoço curto + bico longo
+      ctx.strokeStyle = e.color;
+      ctx.lineWidth = 10;
+      ctx.beginPath();
+      ctx.moveTo(14, -6);
+      ctx.quadraticCurveTo(30, -26, 44, -22);
+      ctx.stroke();
+
+      ctx.fillStyle = e.color;
+      ctx.beginPath();
+      ctx.moveTo(38, -24);
+      ctx.lineTo(78, -30);
+      ctx.lineTo(40, -14);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+
+      // Crista
+      ctx.fillStyle = mixColor(e.color, "#0b0d10", .2);
+      ctx.beginPath();
+      ctx.moveTo(40, -26);
+      ctx.quadraticCurveTo(48, -44, 58, -28);
+      ctx.closePath();
+      ctx.fill();
+
+      ctx.fillStyle = "#111318";
+      ctx.beginPath();
+      ctx.arc(44, -23, 2.6, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Leque caudal
+      ctx.fillStyle = wingColor;
+      ctx.strokeStyle = "rgba(255,255,255,.4)";
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(-18, 6);
+      ctx.lineTo(-44, -8);
+      ctx.lineTo(-44, 20);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+    }
+
+    // Aquáticos (marine): corpo sinuoso e alongado, nadadeiras em vez de patas, nadadeira caudal.
+    function drawMarineBody(e, art, bulk, index) {
+      const bob = Math.sin(animationTime * 1.6 + index) * 3;
+
+      // Ondulação da água
+      ctx.fillStyle = "rgba(79,183,230,.14)";
+      ctx.beginPath();
+      ctx.ellipse(0, 46, 90 + bulk, 10, 0, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.save();
+      ctx.translate(0, bob);
+
+      // Corpo sinuoso
+      ctx.fillStyle = e.color;
+      ctx.strokeStyle = "rgba(255,255,255,.4)";
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.moveTo(-92 - bulk, 8);
+      ctx.quadraticCurveTo(-40, -18, 10, 0);
+      ctx.quadraticCurveTo(50, 14, 70, -4);
+      ctx.quadraticCurveTo(50, 18, 6, 16);
+      ctx.quadraticCurveTo(-40, 2, -92 - bulk, 24);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+
+      // Nadadeira dorsal
+      ctx.fillStyle = mixColor(e.color, "#111318", .16);
+      ctx.beginPath();
+      ctx.moveTo(-16, -14);
+      ctx.quadraticCurveTo(-4, -38, 12, -12);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+
+      // Nadadeiras/pás (frente e trás, em vez de patas)
+      ctx.fillStyle = mixColor(e.color, "#0b0d10", .1);
+      [[-52, 20, -0.4], [30, 12, 0.5]].forEach(([px, py, rot]) => {
+        ctx.save();
+        ctx.translate(px, py);
+        ctx.rotate(rot);
+        ctx.beginPath();
+        ctx.ellipse(0, 0, 20, 9, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+        ctx.restore();
+      });
+
+      // Nadadeira caudal (vertical, na ponta)
+      ctx.beginPath();
+      ctx.moveTo(64, -4);
+      ctx.lineTo(88, -20);
+      ctx.lineTo(78, 2);
+      ctx.lineTo(90, 16);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+
+      // Cabeça (focinho curto ou pescoço, conforme art.neck)
+      ctx.fillStyle = e.color;
+      if (art.neck) {
+        ctx.strokeStyle = e.color;
+        ctx.lineWidth = 13;
+        ctx.beginPath();
+        ctx.moveTo(-78 - bulk, 6);
+        ctx.quadraticCurveTo(-98 - bulk, -22, -84 - bulk, -38);
+        ctx.stroke();
+        ctx.strokeStyle = "rgba(255,255,255,.4)";
+        ctx.lineWidth = 2.5;
+        ctx.beginPath();
+        ctx.ellipse(-84 - bulk, -40, 14, 9, .2, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+        ctx.fillStyle = "#111318";
+        ctx.beginPath();
+        ctx.arc(-80 - bulk, -42, 2.6, 0, Math.PI * 2);
+        ctx.fill();
+      } else {
+        ctx.strokeStyle = "rgba(255,255,255,.4)";
+        ctx.lineWidth = 2.5;
+        ctx.beginPath();
+        ctx.ellipse(-98 - bulk, 12, 20, 10, -.2, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+        ctx.fillStyle = "#111318";
+        ctx.beginPath();
+        ctx.arc(-104 - bulk, 8, 2.6, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      ctx.restore();
+    }
+
+    // Padrão de listras/manchas na pele, reaproveitado por bípedes e quadrúpedes.
+    function drawStripes(e, art, offsetX, offsetY) {
+      ctx.strokeStyle = "rgba(0,0,0,.22)";
+      ctx.lineWidth = 2;
+      for (let i = 0; i <= (art.stripes || 0); i++) {
+        ctx.beginPath();
+        ctx.moveTo(offsetX + i * 16, offsetY - 8);
+        ctx.lineTo(offsetX + i * 16 - 8, offsetY + 20);
+        ctx.stroke();
+      }
     }
 
     function mixColor(hex, other, amount) {
@@ -2380,6 +3054,7 @@
 
     function setupEvents() {
       $("rock").addEventListener("click", event => {
+        playDigSound();
         const amount = clickPower();
         addFossils(amount);
         state.stats.clicks++;
@@ -2402,11 +3077,20 @@
 
       $("hatchBtn").addEventListener("click", hatchEgg);
       $("saveBtn").addEventListener("click", () => { save(); toast("Jogo salvo."); });
+      $("soundBtn").addEventListener("click", toggleSound);
       $("startRunBtn").addEventListener("click", startRun);
       $("nextFightBtn").addEventListener("click", startFight);
       $("prestigeBtn").addEventListener("click", prestige);
       $("elementFilter").addEventListener("change", renderCollection);
       $("rarityFilter").addEventListener("change", renderCollection);
+
+      // Delegação de evento: clique no "✕" de qualquer slot da equipe desequipa o dinossauro,
+      // sem precisar abrir a aba Estratégia para localizá-lo.
+      $("teamStrip").addEventListener("click", event => {
+        const button = event.target.closest("[data-unequip]");
+        if (!button) return;
+        unequipDino(button.dataset.unequip);
+      });
 
       document.querySelectorAll(".tab").forEach(button => {
         button.addEventListener("click", () => {
@@ -2464,6 +3148,8 @@
       renderRunStats();
     }
 
+    $("soundBtn").textContent = soundOn ? "🔊" : "🔇";
+    $("soundBtn").title = soundOn ? "Desativar som" : "Ativar som";
     setupFilters();
     setupEvents();
     checkEvolutions();
@@ -2478,6 +3164,9 @@
     requestAnimationFrame(loop);
 
     window.equipDino = equipDino;
+    window.unequipDino = unequipDino;
+    window.equipItem = equipItem;
+    window.unequipItem = unequipItem;
     window.buyUpgrade = buyUpgrade;
     window.buyRelic = buyRelic;
     window.levelUpDino = levelUpDino;
