@@ -1,165 +1,112 @@
-# 🦖 Paleo Titans: Dinosaurs vs Machines
+🦖 Paleo Titans: Dinosaurs vs Machines
 
-Paleo Titans é um RPG incremental/idle onde você escava fósseis, revive dinossauros elementais e monta equipes para enfrentar exércitos de robôs cada vez mais poderosos.
+Um clicker/incremental de navegador onde você reconstitui dinossauros antigos, monta uma equipe elemental e enfrenta um exército infinito de robôs — tudo em um único arquivo HTML, sem instalação, sem build, sem dependências externas.
 
-O jogo combina mecânicas de clicker, coleção de criaturas, progressão roguelike e batalhas automáticas.
+Abra o paleo-titans.html em qualquer navegador moderno e jogue.
 
-## 🎮 Como Jogar
 
-### Escavação
+O ciclo principal
 
-Clique na rocha fóssil para obter 🦴 Fósseis.
+Escave fósseis clicando na rocha → incube ovos para descobrir dinossauros → monte uma equipe de até 5 → clique em Iniciar run e deixe a batalha acontecer sozinha, fase após fase, até sua equipe ser derrotada. Perder não é o fim: você mantém coleção, evoluções, itens e relíquias, e ainda ganha DNA ancestral permanente proporcional a quanto essa run avançou além do seu recorde anterior.
 
-Os fósseis são a principal moeda do jogo e podem ser usados para:
 
-* Melhorar ferramentas de escavação
-* Comprar ovos
-* Evoluir dinossauros
-* Aumentar níveis dos dinossauros
+Principais sistemas
 
----
+Escavação
 
-### Ovos e Coleção
 
-Use fósseis para incubar ovos.
+Clique na rocha (agora com um fóssil de verdade — um osso incrustado na pedra, não mais um blob abstrato) para gerar fósseis.
+6 melhorias de escavação (pá, picareta, broca, scanner, equipamento automático, laboratório), cada uma comprável individualmente ou com o botão Máx (compra o máximo de níveis que os fósseis atuais permitem).
 
-Cada ovo pode revelar um dinossauro de diferentes:
 
-* Elementos
-* Raridades
-* Atributos
+Coleção — 100 dinossauros
 
-Dinossauros repetidos fortalecem a criatura já obtida.
 
----
+9 elementos: Água, Terra, Pedra, Fogo, Ar, Raio, Luz, Trevas, Nulo — com vantagens e fraquezas elementais (x1.5 / x0.75), Nulo levemente favorecido contra todos.
+5 raridades: Comum, Raro, Épico, Lendário, Mítico.
+6 classes: Tanque, Guerreiro, Assassino, Mago, Suporte, Curandeiro — cada uma com 3 especializações exclusivas desbloqueadas ao evoluir para Adulto (uma focada em ataque, uma em HP, uma em poder de habilidade).
+3 estágios de evolução (Bebê → Adolescente → Adulto), traits aleatórias (Feroz, Resistente, Gênio, Mutante, Lendário) e uma habilidade ativa própria por espécie (cura, escudo, ataque em área, crítico garantido, roubo de vida, congelar, reduzir defesa, entre outras) — os números reais de cada habilidade aparecem na própria aba Coleção.
+Corpo e dieta de cada uma das 100 espécies foram curados manualmente pela paleontologia real (nada de Gallimimus virar "aquático" por acaso de um índice) — bípedes, quadrúpedes, voadores e aquáticos com silhuetas e posturas anatomicamente coerentes.
 
-### Elementos
 
-Os dinossauros pertencem a diferentes elementos:
+Equipe e sinergias
 
-* Água 🌊
-* Fogo 🔥
-* Terra 🌎
-* Pedra 🪨
-* Ar 🌪️
-* Raio ⚡
-* Luz ☀️
-* Trevas 🌑
-* Nulo 🌀
+Até 5 dinossauros ativos, com bônus de composição:
 
-Cada elemento possui vantagens e desvantagens em combate.
 
----
+Monoelemental, Diversificada, 2 Fogo+2 Raio, 2 Água+2 Terra, 2 Luz+2 Trevas, 2 Pedra+2 Terra
+Manada Herbívora, Alcateia Carnívora, Esquadrão Alado, Cardume Predador (times completos de herbívoros, carnívoros, voadores ou aquáticos)
+Itens do tipo "Cristal de Afinidade" concedem um elemento secundário a um dinossauro, somando-o às sinergias sem remover o elemento original.
 
-### Evolução dos Dinossauros
 
-Todos os dinossauros possuem:
+Itens
 
-* Nível
-* Ataque
-* Vida (HP)
-* Raridade
-* Estágio evolutivo
+Chefes robóticos têm chance de dropar equipamentos (armas, armaduras, reatores, sensores, amuletos). Cada dinossauro equipa apenas 1 item por vez. Itens no inventário podem ser vendidos individualmente ou em lote por raridade, com confirmação de segurança ao vender itens Lendários/Míticos.
 
-Os dinossauros podem ser fortalecidos usando fósseis.
+Batalha
 
-#### Evolução por Nível
 
-* Nível 1 a 4 → Upgrades normais
-* Nível 5 → Evolução para Adolescente
-* Nível 10 → Evolução para Adulto
+Modo totalmente automático: iniciar uma run encadeia as lutas sozinho até a derrota — sem espaço para farmar indefinidamente entre estágios.
+6 tipos de robôs com silhuetas próprias (Drone, Tanque, Androide, Mecha, Torre de Defesa, Chefe Robótico), escalando infinitamente em dificuldade.
+Feedback visual de combate: partículas de cura, escudo, crítico, projéteis elementais (temáticos por elemento) e efeitos de todas as habilidades ativas, desenhados em tempo real no canvas.
+Efeitos sonoros sintetizados via Web Audio API (escavação, ataques) — sem nenhum arquivo de áudio externo.
 
-As evoluções exigem uma quantidade de fósseis proporcional à raridade do dinossauro.
 
-Quanto mais raro o dinossauro, maior o custo para evoluí-lo.
+Prestígio, DNA e Relíquias
 
----
+Cada derrota concede DNA ancestral automaticamente, calculado sobre o quanto a run avançou além do seu recorde pessoal anterior — repetir uma run sem progresso genuíno não rende nada. O DNA é investido em Relíquias: melhorias permanentes de produção, experiência, sorte, dano e HP.
 
-### Equipes
+Missões e progressão de longo prazo
 
-Você pode equipar até 5 dinossauros ao mesmo tempo.
 
-Monte equipes combinando:
+Missões diárias: 3 desafios rotativos que se renovam a cada dia real.
+Marcos de progresso: 6 trilhas permanentes (coleção, robôs derrotados, chefes, ovos incubados, evoluções, fase alcançada), cada uma com vários degraus e recompensas crescentes.
+Conquistas clássicas de marco único.
 
-* Elementos
-* Raridades
-* Funções de combate
 
-A estratégia da equipe influencia diretamente o desempenho nas batalhas.
+Onboarding
 
----
 
-### Batalhas
+Tutorial guiado passo a passo para novos jogadores: destaca um elemento real da interface por vez (nada de popup com parede de texto), com "Pular tutorial" sempre disponível e sem nenhum ponto de travamento possível.
+Guia de referência completo (botão ❓), dividido em seções — sinergias e prestígio, sendo os tópicos mais complexos, têm seção própria e detalhada.
 
-Os dinossauros enfrentam robôs automaticamente.
 
-Cada robô possui:
 
-* HP
-* Ataque
-* Elemento
+Tecnologia
 
-O objetivo é derrotar o inimigo antes do tempo acabar.
+Um único arquivo .html autocontido: HTML + CSS + JavaScript puro, sem frameworks, sem build step, sem requisições de rede em tempo de jogo.
 
-Se o robô for derrotado:
 
-✅ Você avança para o próximo estágio.
+Renderização: todo o elenco de dinossauros e robôs é desenhado proceduralmente via Canvas 2D (nenhuma imagem/sprite externa).
+Áudio: sintetizado via Web Audio API.
+Persistência: localStorage, com exportação de save em base64 e opção de reset completo.
+Save: compatível com versões anteriores — saves antigos são migrados automaticamente ao carregar.
 
-Se sua equipe for derrotada:
 
-❌ A run termina.
 
----
+Rodando localmente
 
-### Progressão Roguelike
+Não precisa de nada além de um navegador:
 
-A dificuldade aumenta continuamente.
+bash# clone o repositório e abra o arquivo direto
+open paleo-titans.html   # macOS
+start paleo-titans.html  # Windows
+xdg-open paleo-titans.html  # Linux
 
-Cada novo inimigo possui:
+Ou simplesmente dê duplo clique no arquivo.
 
-* Mais HP
-* Mais dano
 
-Ao perder, você mantém seu progresso principal:
+Changelog resumido desde a primeira versão
 
-* Fósseis acumulados
-* Dinossauros desbloqueados
-* Evoluções realizadas
 
-Assim, cada nova tentativa permite alcançar estágios mais altos.
-
----
-
-## ⭐ Principais Recursos
-
-* Sistema de escavação incremental
-* Coleção de dinossauros elementais
-* Diferentes raridades
-* Evolução em múltiplos estágios
-* Batalhas automáticas
-* Equipes de até 5 dinossauros
-* Sistema roguelike
-* Progressão permanente
-* Arquivo único (HTML, CSS e JavaScript)
-
----
-
-## 🚀 Executando o Projeto
-
-Basta abrir o arquivo:
-
-index.html
-
-em qualquer navegador moderno.
-
-Não é necessário instalar dependências ou configurar servidor.
-
-
-## 🛠️ Tecnologias
-
-* HTML
-* CSS
-* JavaScript Vanilla
-
-Todo o jogo está contido em um único arquivo para facilitar distribuição e portabilidade.
-
+Reescrita completa do sistema de habilidades ativas com números reais visíveis na UI
+Sistema de itens com equipamento único por dinossauro, drop exclusivo de chefes e venda
+18 especializações de classe (3 por classe) substituindo o sistema genérico original
+Modo de batalha totalmente automático (run começa e encadeia sozinha até a derrota)
+DNA ancestral automático ao perder, escalado pela melhora sobre o recorde pessoal
+Sistema de missões diárias rotativas + marcos de progresso em camadas (substituindo as 5 missões fixas originais)
+Redesenho completo da arte procedural: posturas de dinossauros corrigidas para o padrão paleontológico atual, corpo/dieta de cada espécie curados manualmente, 6 robôs com silhuetas distintas
+Feedback visual de combate (partículas por habilidade) e efeitos sonoros sintetizados
+Botão de escavação redesenhado (fóssil incrustado em rocha)
+Tutorial guiado interativo + guia de referência sectionado
+Diversas correções de qualidade de vida (comprar máximo, incubar em lote, venda em lote, desequipar rápido) e de balanceamento (remoção de brechas de farm infinito)
